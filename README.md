@@ -1,19 +1,90 @@
-# KitchenFlow — Tuần 1, Đề tài 04
+# KitchenFlow
 
-Order API cho môn Phát triển ứng dụng phân tán. Phạm vi: menu, tạo đơn, tra cứu đơn và lưu PostgreSQL. Không triển khai RabbitMQ/Kitchen Worker (Tuần 2), hủy đơn/phát sự kiện (Tuần 3), SignalR/UI (Tuần 4).
+Hệ thống đặt món và xử lý tại bếp, được phát triển trong môn **Phát triển ứng dụng phân tán**.
 
-## Môi trường
+KitchenFlow cung cấp API để khách hàng xem thực đơn, tạo đơn và tra cứu đơn hàng. Đơn hàng được lưu trong PostgreSQL và có thể truy cập lại sau khi khởi động lại ứng dụng.
 
-- .NET SDK 10.0.201 (global.json), ASP.NET Core Minimal API net10.0.
-- EF Core/CLI 10.0.4, Npgsql EF provider 10.0.3.
-- PostgreSQL 18; Docker Desktop là lựa chọn thay thế cho PostgreSQL cài trực tiếp.
-- PowerShell 7 để chạy script kiểm thử (`pwsh`). Các lệnh dưới chạy từ thư mục gốc repository.
+## Chức năng
 
-Thư mục ban đầu trống, không có AGENTS.md, solution hoặc metadata Git. Không tự tạo commit hay thay đổi instance PostgreSQL sẵn có.
+- Xem danh sách món ăn.
+- Tạo đơn hàng gồm một hoặc nhiều món.
+- Tra cứu chi tiết đơn theo mã và xem danh sách đơn mới nhất.
+- Kiểm tra khách hàng, món ăn, số lượng và món bị trùng trước khi lưu.
+- Cung cấp dữ liệu mẫu cho môi trường phát triển.
 
-## Kết nối PostgreSQL trên PowerShell
+Phiên bản hiện tại triển khai Order API của Tuần 1. Đơn mới luôn có trạng thái `Pending`. Các trạng thái `Preparing`, `Ready` và `Cancelled` đã được khai báo; luồng xử lý tương ứng sẽ được bổ sung ở các giai đoạn sau.
 
-Dùng PostgreSQL có sẵn: tạo database `kitchenflow` và tài khoản có quyền tạo bảng, rồi đặt biến môi trường trong **mỗi cửa sổ PowerShell** chạy EF/API:
+## Công nghệ
+
+- **.NET 10** và **ASP.NET Core Minimal API**.
+- **Entity Framework Core 10** với **Npgsql**.
+- **PostgreSQL 18**.
+- **Docker Compose** để chạy PostgreSQL cục bộ (tùy chọn).
+- **PowerShell 7** để chạy bộ kiểm thử HTTP.
+
+## Cấu trúc dự án
+
+```text
+KitchenFlow/
+├── src/Order.Api/
+│   ├── Contracts/          # DTO cho request, response và lỗi
+│   ├── Data/               # DbContext, quan hệ và seed dữ liệu
+│   ├── Endpoints/          # Endpoint menu và đơn hàng
+│   ├── Migrations/         # EF Core migrations
+│   ├── Models/             # Entity và trạng thái đơn hàng
+│   └── Program.cs          # Cấu hình và khởi động API
+├── scripts/
+│   └── Test-OrderApi.ps1    # Kiểm thử HTTP và kiểm tra dữ liệu sau restart
+├── docs/                   # Tài liệu kiểm chứng và kết quả kiểm thử
+├── compose.yaml            # PostgreSQL cho môi trường phát triển
+├── OrderApi.http            # Các request mẫu
+├── dotnet-tools.json        # Công cụ dotnet-ef cục bộ
+├── global.json              # Phiên bản .NET SDK
+└── KitchenFlow.slnx
+```
+
+## Yêu cầu môi trường
+
+- .NET SDK **10.0.201** hoặc bản vá tương thích theo `global.json`.
+- PostgreSQL 18 cài trực tiếp, hoặc Docker Desktop hỗ trợ Docker Compose.
+- PowerShell 7 (`pwsh`) nếu sử dụng script kiểm thử.
+
+Các lệnh dưới đây sử dụng PowerShell và chạy từ thư mục gốc dự án.
+
+## Cài đặt và chạy
+
+### 1. Lấy mã nguồn
+
+```powershell
+git clone https://github.com/vzmanhdev/KitchenFlow.git
+cd KitchenFlow
+dotnet tool restore
+dotnet restore --configfile NuGet.Config
+```
+
+### 2. Chuẩn bị PostgreSQL
+
+**Sử dụng Docker Compose**
+
+Khởi động Docker Desktop, sau đó đặt mật khẩu database và chạy dịch vụ:
+
+```powershell
+$secret = Read-Host 'PostgreSQL password' -AsSecureString
+$env:POSTGRES_PASSWORD = [System.Net.NetworkCredential]::new('', $secret).Password
+Remove-Variable secret
+docker compose up -d postgres
+docker compose exec postgres pg_isready -U kitchenflow -d kitchenflow
+```
+
+Chờ đến khi PostgreSQL báo `accepting connections` trước khi áp dụng migration. Compose tạo database `kitchenflow`, user `kitchenflow` và mở cổng `5432` trên loopback. Cổng này cần còn trống.
+
+```powershell
+$env:ConnectionStrings__Orders = "Host=localhost;Port=5432;Database=kitchenflow;Username=kitchenflow;Password=$env:POSTGRES_PASSWORD"
+```
+
+**Sử dụng PostgreSQL có sẵn**
+
+Tạo database và tài khoản có quyền tạo bảng, rồi thiết lập chuỗi kết nối theo môi trường của bạn:
 
 ```powershell
 $secret = Read-Host 'PostgreSQL password' -AsSecureString
@@ -22,95 +93,142 @@ $env:ConnectionStrings__Orders = "Host=localhost;Port=5432;Database=kitchenflow;
 Remove-Variable password, secret
 ```
 
-Đây là giá trị mẫu; thay host/port/database/user theo máy. Mật khẩu thật chỉ ở biến môi trường, không đưa vào Git. API đọc `ConnectionStrings:Orders` qua hệ thống configuration ASP.NET Core; thiếu cấu hình sẽ báo lỗi rõ ràng.
+API đọc cấu hình `ConnectionStrings:Orders`; biến môi trường tương ứng là `ConnectionStrings__Orders`. Thay host, port, database và username nếu cần. Không lưu mật khẩu thật trong mã nguồn. Biến môi trường chỉ có hiệu lực trong cửa sổ PowerShell hiện tại và các tiến trình được khởi chạy từ đó.
 
-Hoặc dùng Docker (cần Docker Desktop đang chạy và port 5432 còn trống):
-
-```powershell
-$secret = Read-Host 'Password cho database demo' -AsSecureString
-$env:POSTGRES_PASSWORD = [System.Net.NetworkCredential]::new('', $secret).Password
-docker compose up -d
-$env:ConnectionStrings__Orders = "Host=localhost;Port=5432;Database=kitchenflow;Username=kitchenflow;Password=$env:POSTGRES_PASSWORD"
-Remove-Variable secret
-```
-
-Volume `postgres_data` giữ dữ liệu khi container khởi động lại. Không dùng `docker compose down -v` nếu cần giữ đơn.
-
-## Build, migration và chạy
+### 3. Build và áp dụng migration
 
 ```powershell
-dotnet tool restore
-dotnet restore --configfile NuGet.Config
 dotnet build --no-restore
 dotnet ef database update --project src/Order.Api
+```
+
+Migration tạo schema và các ràng buộc dữ liệu. API không tự áp dụng migration khi khởi động.
+
+### 4. Khởi động API
+
+```powershell
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
 dotnet run --no-build --project src/Order.Api --no-launch-profile --urls http://localhost:5080
 ```
 
-Migration `InitialCreate` có khóa ngoại, khóa ghép OrderItem `(OrderId, MenuItemId)` và check `Quantity >= 1`. Không dùng EnsureCreated. Migration được áp dụng bằng CLI, API không tự thay schema. Seed chỉ chạy trong Development, dùng INSERT ON CONFLICT theo ID nên chạy lại không thêm trùng.
+API lắng nghe tại `http://localhost:5080`. Dùng các đường dẫn `/menu` và `/orders` để gọi API; phiên bản hiện tại chưa có trang chủ hoặc giao diện web.
 
-ID demo: khách `1 = Nguyen An`, `2 = Tran Binh`; món `1 = Pho bo`, `2 = Com ga`, `3 = Bun cha`.
+Trong môi trường `Development`, ứng dụng tự thêm dữ liệu mẫu nếu chưa tồn tại. Khởi động lại không tạo bản ghi seed trùng:
 
-## Mã nguồn
+- Khách hàng: `1` — Nguyen An; `2` — Tran Binh.
+- Món ăn: `1` — Pho bo; `2` — Com ga; `3` — Bun cha.
 
-- `src/Order.Api/Program.cs`: cấu hình JSON, database, seed Development, đăng ký endpoint. Console logging tránh phụ thuộc quyền ghi Windows Event Log. `ThrowOnBadRequest=false` giữ phản hồi HTTP mặc định gọn khi binding thất bại.
-- `Models/Entities.cs`: bốn entity và enum Pending/Preparing/Ready/Cancelled.
-- `Data/OrderDbContext.cs`: quan hệ, ràng buộc, seed.
-- `Contracts/OrderDtos.cs`: DTO tạo đơn, chi tiết và lỗi `{code,message}`.
-- `Endpoints/OrderEndpoints.cs`: bốn endpoint và validation. Một SaveChangesAsync ghi toàn bộ graph trong transaction EF; reload scalar sau ghi để CreatedAt trong phản hồi khớp độ chính xác PostgreSQL.
-- `Migrations/`: migration và model snapshot.
-- `OrderApi.http`: request demo; `scripts/Test-OrderApi.ps1`: kiểm thử HTTP có assert.
+## Sử dụng API
 
-ID đơn là Guid do server sinh, CreatedAt là UTC, trạng thái JSON là chuỗi. Tuần 1 chỉ tạo Pending. GET chi tiết trả customer `{id,name}` và items `{menuItemId,name,quantity}`. GET danh sách dùng cùng DTO, sắp CreatedAt giảm dần và Id giảm dần khi bằng thời điểm. Mỗi đơn qua API phải có ít nhất một dòng; DB có FK, quantity check và khóa ghép chống lặp món. Chưa có endpoint sửa/xóa khách/món.
+Mở [OrderApi.http](OrderApi.http) bằng công cụ hỗ trợ HTTP request, hoặc sử dụng Postman/curl. Với Windows PowerShell, dùng `curl.exe`.
 
-## Demo và chụp minh chứng
+### Xem thực đơn
 
-1. Mở `OrderApi.http`, GET /menu để xem seed.
-2. POST /orders với khách 1 và hai món (1: số lượng 2, 2: số lượng 1).
-3. Chụp màn hình response gồm **201 Created**, header **Location: /orders/{id}** và JSON có **Pending**. Lưu đúng Location, không tạo đơn mới để thay thế khi kiểm tra restart.
-4. GET chính Location, đối chiếu Id, customer, CreatedAt và số lượng 2/1; GET /orders để thấy đơn ở đầu.
-5. Chạy các request lỗi trong tệp .http; mỗi lỗi validation có 400 và DTO code/message. JSON sai cú pháp: 400; Guid không parse được: 400; Content-Type text/plain: 415. Với cấu hình hiện tại cả ba lỗi binding trả body rỗng, không có Content-Type, không có DTO lỗi ứng dụng.
-6. Ctrl+C dừng API. Chạy lại cùng lệnh và cùng database. GET lại chính Location đã lưu; chụp response 200 và cùng dữ liệu.
+```http
+GET /menu
+```
 
-Tự động hóa bước 1–5 trong một cửa sổ PowerShell khác:
+Trả `200 OK` và danh sách món ăn gồm `id`, `name`.
+
+### Tạo đơn hàng
+
+```http
+POST /orders
+Content-Type: application/json
+
+{
+  "customerId": 1,
+  "items": [
+    { "menuItemId": 1, "quantity": 2 },
+    { "menuItemId": 2, "quantity": 1 }
+  ]
+}
+```
+
+Trả `201 Created`, header `Location: /orders/{id}` và chi tiết đơn hàng. `id` là GUID do máy chủ sinh; `createdAt` do máy chủ đặt theo UTC; `status` là chuỗi `Pending`.
+
+Phản hồi chi tiết có cấu trúc:
+
+```json
+{
+  "id": "a00b9404-0e38-4523-9790-40a3d2171a15",
+  "customer": { "id": 1, "name": "Nguyen An" },
+  "createdAt": "2026-11-16T10:42:45.175543Z",
+  "status": "Pending",
+  "items": [
+    { "menuItemId": 1, "name": "Pho bo", "quantity": 2 },
+    { "menuItemId": 2, "name": "Com ga", "quantity": 1 }
+  ]
+}
+```
+
+ID và thời điểm trong ví dụ chỉ minh họa. Sử dụng `Location` nhận được từ request của bạn để tra cứu.
+
+### Tra cứu đơn hàng
+
+```http
+GET /orders/{id}
+```
+
+Trả `200 OK` với chi tiết đơn, hoặc `404 Not Found` nếu GUID hợp lệ nhưng đơn không tồn tại.
+
+### Xem danh sách đơn hàng
+
+```http
+GET /orders
+```
+
+Trả `200 OK` với danh sách chi tiết đơn, sắp xếp theo thời gian tạo giảm dần. Nếu chưa có đơn, kết quả là `[]`.
+
+### Phản hồi lỗi
+
+Lỗi kiểm tra dữ liệu trả `400 Bad Request` với `code` và `message`, ví dụ:
+
+```json
+{
+  "code": "empty_order",
+  "message": "At least one item is required."
+}
+```
+
+Các mã lỗi gồm `empty_order`, `invalid_quantity`, `duplicate_menu_item`, `customer_not_found` và `menu_item_not_found`. Mỗi đơn cần ít nhất một món, số lượng từ 1 trở lên và mỗi mã món chỉ xuất hiện một lần.
+
+Request bị ASP.NET Core từ chối trước khi vào handler có định dạng khác: JSON sai cú pháp hoặc GUID không hợp lệ trả `400`; Content-Type không được hỗ trợ trả `415`. Các phản hồi này có body rỗng theo cấu hình hiện tại.
+
+## Kiểm thử
+
+Khi API đang chạy tại cổng `5080`, mở một cửa sổ PowerShell khác tại thư mục dự án:
 
 ```powershell
 pwsh -File scripts/Test-OrderApi.ps1
 ```
 
-Script thêm một đơn hợp lệ mỗi lần chạy, kiểm tra validation không tạo thêm đơn, lưu Location và toàn bộ body ở `docs/created-order.json`, response 201 gồm header ở `docs/create-response.txt`. Sau khi **thật sự dừng/chạy lại API**, dùng:
+Script kiểm tra menu, tạo đơn, tra cứu, danh sách đơn và các trường hợp dữ liệu không hợp lệ. Mỗi lượt chạy tạo một đơn hợp lệ và ghi đè các tệp `docs/created-order.json`, `docs/create-response.txt` bằng kết quả mới nhất.
+
+Để kiểm tra tính bền vững của dữ liệu, dừng API bằng `Ctrl+C`, chạy lại với cùng chuỗi kết nối, sau đó gọi:
 
 ```powershell
 $location = (Get-Content docs/created-order.json -Raw | ConvertFrom-Json).location
 pwsh -File scripts/Test-OrderApi.ps1 -SavedLocation $location
-curl.exe -i "http://localhost:5080$location"
 ```
 
-Tham số SavedLocation chỉ kiểm tra lại, không tạo đơn; assert response body khớp nguyên văn body POST đã lưu. Chỉ chạy chế độ tạo lại nếu muốn thay minh chứng cũ.
+Chế độ `-SavedLocation` tra cứu đúng URI đã lưu và đối chiếu toàn bộ body với phản hồi tạo đơn, không tạo thêm đơn mới. Chi tiết kết quả kiểm chứng được lưu riêng tại [docs/verification.md](docs/verification.md).
 
-Để chụp 201 bằng curl trên PowerShell, tránh vấn đề quote JSON bằng tệp:
+## Dữ liệu và dịch vụ cục bộ
+
+Đơn hàng và các dòng món được lưu cùng nhau trong một transaction của EF Core. Khóa ngoại liên kết đơn với khách hàng và món ăn; khóa ghép của dòng món ngăn trùng món trong cùng đơn.
+
+Khi sử dụng Docker, dữ liệu được giữ trong volume `postgres_data`. Để dừng PostgreSQL mà vẫn giữ dữ liệu:
 
 ```powershell
-'{"customerId":1,"items":[{"menuItemId":1,"quantity":2},{"menuItemId":2,"quantity":1}]}' | Set-Content -Encoding utf8 .local/demo-order.json
-curl.exe -i http://localhost:5080/orders -H 'Content-Type: application/json' --data-binary '@.local/demo-order.json'
+docker compose down
 ```
 
-## Kết quả thực tế ngày 16/11/2026
+Lệnh `docker compose down -v` sẽ xóa volume và dữ liệu database.
 
-Xem `docs/verification.md`, `docs/http-test-results.txt`, `docs/restart-test-results.txt`, `docs/create-response.txt` và `docs/seed-after-restart.txt`.
+## Lộ trình phát triển
 
-Máy có SDK 10.0.201, PostgreSQL 18.6 tại `D:/PostgreSQL/18/bin`. Docker daemon không chạy. NuGet.Config người dùng bị sandbox từ chối đọc; restore/install đã chạy với quyền được duyệt. PostgreSQL cổng 5432 có sẵn nhưng không có credential, nên đã tạo **cụm demo riêng** `.local/pgdata` trên `127.0.0.1:55432`, database `kitchenflow`, user `kitchenflow`, auth trust chỉ cho demo cục bộ. Không dùng trust cho triển khai thực tế.
-
-Để chạy lại chính dữ liệu minh chứng trên máy này:
-
-```powershell
-# Nếu cụm riêng đã dừng (không chạy start khi đang hoạt động):
-& D:/PostgreSQL/18/bin/pg_ctl.exe -D D:/KitchenFlow/.local/pgdata -l D:/KitchenFlow/.local/postgres.log -o '-p 55432 -h 127.0.0.1' start
-$env:ConnectionStrings__Orders = 'Host=127.0.0.1;Port=55432;Database=kitchenflow;Username=kitchenflow'
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-dotnet run --no-build --project src/Order.Api --no-launch-profile --urls http://localhost:5080
-```
-
-`.local` bị Git ignore; dữ liệu PostgreSQL không phải artifact bàn giao. Trên máy khác, tạo database, áp dụng migration, seed và chạy kiểm thử để có Location mới. Các đơn tạo trong những lần chẩn đoán trước vẫn được giữ trong database demo.
-
-Tham khảo: [EF CLI](https://learn.microsoft.com/en-us/ef/core/cli/dotnet), [Npgsql provider 10.0.3](https://www.nuget.org/packages/Npgsql.EntityFrameworkCore.PostgreSQL/10.0.3).
+- **Tuần 1:** Order API, PostgreSQL và kiểm thử HTTP — đã triển khai.
+- **Tuần 2:** RabbitMQ và Kitchen Worker.
+- **Tuần 3:** Hủy đơn và phát sự kiện.
+- **Tuần 4:** SignalR và giao diện người dùng.
