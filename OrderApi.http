@@ -1,0 +1,66 @@
+@baseUrl = http://localhost:5080
+# Copy the exact Location value from POST below before restart.
+@orderId = 00000000-0000-0000-0000-000000000001
+
+### 1. Menu: 1 Pho bo, 2 Com ga, 3 Bun cha. Customers: 1 Nguyen An, 2 Tran Binh.
+GET {{baseUrl}}/menu
+
+### 2. Create; capture status 201, Location and body
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{"customerId":1,"items":[{"menuItemId":1,"quantity":2},{"menuItemId":2,"quantity":1}]}
+
+### 3. Paste ID from Location. Repeat this exact request after restarting API.
+GET {{baseUrl}}/orders/{{orderId}}
+
+### 4. Newest first
+GET {{baseUrl}}/orders
+
+### 5. Missing valid ID: 404
+GET {{baseUrl}}/orders/00000000-0000-0000-0000-000000000001
+
+### Empty order: 400
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{"customerId":1,"items":[]}
+
+### Missing customer: 400
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{"customerId":999999,"items":[{"menuItemId":1,"quantity":1}]}
+
+### Missing menu item: 400
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{"customerId":1,"items":[{"menuItemId":999999,"quantity":1}]}
+
+### Zero quantity: 400
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{"customerId":1,"items":[{"menuItemId":1,"quantity":0}]}
+
+### Duplicate menu item: 400
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{"customerId":1,"items":[{"menuItemId":1,"quantity":1},{"menuItemId":1,"quantity":2}]}
+
+### Malformed JSON: framework 400
+POST {{baseUrl}}/orders
+Content-Type: application/json
+
+{
+
+### Unsupported media type: framework 415
+POST {{baseUrl}}/orders
+Content-Type: text/plain
+
+{}
+
+### Invalid Guid: framework 400
+GET {{baseUrl}}/orders/not-a-guid

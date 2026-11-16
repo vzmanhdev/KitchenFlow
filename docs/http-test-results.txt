@@ -1,0 +1,16 @@
+PASS menu 200
+PASS create 201 Location=/orders/a00b9404-0e38-4523-9790-40a3d2171a15 Pending
+PASS detail 200 quantities 2,1
+PASS list 200 newest first
+PASS absent order 404
+PASS validation 400 empty_order
+PASS validation 400 customer_not_found
+PASS validation 400 menu_item_not_found
+PASS validation 400 invalid_quantity
+PASS validation 400 duplicate_menu_item
+PASS validation 400 empty_order
+PASS validation 400 invalid_quantity
+Framework /orders => 400; content-type=; body-length=0
+Framework /orders => 415; content-type=; body-length=0
+Framework /orders/not-a-guid => 400; content-type=; body-length=0
+PASS rejected requests did not create orders

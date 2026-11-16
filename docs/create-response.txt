@@ -1,0 +1,8 @@
+HTTP/1.1 201 Created
+Date: Mon, 16 Nov 2026 10:42:45 GMT
+Server: Kestrel
+Location: /orders/a00b9404-0e38-4523-9790-40a3d2171a15
+Transfer-Encoding: chunked
+Content-Type: application/json; charset=utf-8
+
+{"id":"a00b9404-0e38-4523-9790-40a3d2171a15","customer":{"id":1,"name":"Nguyen An"},"createdAt":"2026-11-16T10:42:45.175543Z","status":"Pending","items":[{"menuItemId":1,"name":"Pho bo","quantity":2},{"menuItemId":2,"name":"Com ga","quantity":1}]}

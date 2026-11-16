@@ -1,0 +1,9 @@
+ customers
+-----------
+         2
+(1 row)
+
+ menu_items
+------------
+          3
+(1 row)
