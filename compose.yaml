@@ -1,3 +1,14 @@
+x-app-environment: &app-environment
+  ConnectionStrings__Orders: "Host=postgres;Database=kitchenflow;Username=kitchenflow;Password=${POSTGRES_PASSWORD}"
+  RabbitMQ__Host: rabbitmq
+  RabbitMQ__User: ${RABBITMQ_USER:-kitchenflow}
+  RabbitMQ__Password: ${RABBITMQ_PASSWORD:-}
+x-app-dependencies: &app-dependencies
+  postgres:
+    condition: service_healthy
+  rabbitmq:
+    condition: service_healthy
+
 services:
   postgres:
     image: postgres:18
@@ -31,6 +42,26 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
+  order-api:
+    profiles: [apps]
+    build:
+      context: .
+      target: api
+    environment:
+      <<: *app-environment
+      ASPNETCORE_ENVIRONMENT: Development
+    depends_on: *app-dependencies
+    ports:
+      - "127.0.0.1:${ORDER_API_PORT:-5080}:8080"
+  kitchen-worker:
+    profiles: [apps]
+    build:
+      context: .
+      target: worker
+    environment:
+      <<: *app-environment
+      Kitchen__CookingSeconds: ${KITCHEN_COOKING_SECONDS:-3}
+    depends_on: *app-dependencies
 volumes:
   postgres_data:
   rabbitmq_data:
