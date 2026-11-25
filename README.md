@@ -12,14 +12,15 @@ KitchenFlow cung cấp API để khách hàng xem thực đơn, tạo đơn và 
 - Kiểm tra khách hàng, món ăn, số lượng và món bị trùng trước khi lưu.
 - Cung cấp dữ liệu mẫu cho môi trường phát triển.
 
-Phiên bản hiện tại triển khai Order API của Tuần 1. Đơn mới luôn có trạng thái `Pending`. Các trạng thái `Preparing`, `Ready` và `Cancelled` đã được khai báo; luồng xử lý tương ứng sẽ được bổ sung ở các giai đoạn sau.
+Tuần 2 thêm RabbitMQ và Kitchen Worker. API lưu đơn mới ở `Pending`. Kitchen Worker nhận message và lưu lần lượt `Preparing` và `Ready` vào PostgreSQL. Xem [hướng dẫn chạy và demo Tuần 2](docs/week2/04-setup-guide.md), [kiến trúc](docs/week2/01-architecture.md) và [kết quả kiểm thử](docs/week2/03-testing.md).
 
 ## Công nghệ
 
 - **.NET 10** và **ASP.NET Core Minimal API**.
 - **Entity Framework Core 10** với **Npgsql**.
 - **PostgreSQL 18**.
-- **Docker Compose** để chạy PostgreSQL cục bộ (tùy chọn).
+- **RabbitMQ 4.2** và **RabbitMQ.Client 7.1.2** để chuyển đơn đến Worker.
+- **Docker Compose** để chạy PostgreSQL, RabbitMQ Management, Order API và Kitchen Worker.
 - **PowerShell 7** để chạy bộ kiểm thử HTTP.
 
 ## Cấu trúc dự án
@@ -33,10 +34,15 @@ KitchenFlow/
 │   ├── Migrations/         # EF Core migrations
 │   ├── Models/             # Entity và trạng thái đơn hàng
 │   └── Program.cs          # Cấu hình và khởi động API
+├── src/KitchenFlow.Contracts/       # Hợp đồng JSON của message
+├── src/KitchenFlow.Messaging/       # Kết nối và topology RabbitMQ
+├── src/KitchenFlow.KitchenWorker/   # Tiến trình xử lý đơn bất đồng bộ
+├── tests/KitchenFlow.Contracts.Tests/
 ├── scripts/
+│   ├── Test-Week2.ps1      # Kiểm thử tích hợp với PostgreSQL và RabbitMQ
 │   └── Test-OrderApi.ps1    # Kiểm thử HTTP và kiểm tra dữ liệu sau restart
 ├── docs/                   # Tài liệu kiểm chứng và kết quả kiểm thử
-├── compose.yaml            # PostgreSQL cho môi trường phát triển
+├── compose.yaml            # Hạ tầng và profile apps
 ├── OrderApi.http            # Các request mẫu
 ├── dotnet-tools.json        # Công cụ dotnet-ef cục bộ
 ├── global.json              # Phiên bản .NET SDK
@@ -105,6 +111,8 @@ dotnet ef database update --project src/Order.Api
 Migration tạo schema và các ràng buộc dữ liệu. API không tự áp dụng migration khi khởi động.
 
 ### 4. Khởi động API
+
+Các lệnh dưới đây chạy API trực tiếp trên host. Để đơn chuyển sang `Ready`, khởi động RabbitMQ và Worker theo [hướng dẫn Tuần 2](docs/week2/04-setup-guide.md). API vẫn lưu đơn trong thời gian broker gián đoạn và ghi log khi chưa xác nhận được publish.
 
 ```powershell
 $env:ASPNETCORE_ENVIRONMENT = 'Development'
@@ -197,13 +205,15 @@ Request bị ASP.NET Core từ chối trước khi vào handler có định dạ
 
 ## Kiểm thử
 
+Khi Docker Linux Engine hoạt động, chạy `pwsh -NoProfile -File scripts/Test-Week2.ps1` để kiểm thử luồng Tuần 2 trên dự án Compose riêng.
+
 Khi API đang chạy tại cổng `5080`, mở một cửa sổ PowerShell khác tại thư mục dự án:
 
 ```powershell
 pwsh -File scripts/Test-OrderApi.ps1
 ```
 
-Script kiểm tra menu, tạo đơn, tra cứu, danh sách đơn và các trường hợp dữ liệu không hợp lệ. Mỗi lượt chạy tạo một đơn hợp lệ và ghi đè các tệp `docs/created-order.json`, `docs/create-response.txt` bằng kết quả mới nhất.
+Script kiểm tra menu, tạo đơn, tra cứu, danh sách đơn và các trường hợp dữ liệu không hợp lệ. Dừng Kitchen Worker trước khi chạy để các kiểm tra so sánh đơn ở trạng thái `Pending` ổn định. Mỗi lượt chạy tạo một đơn hợp lệ và ghi đè các tệp `docs/created-order.json`, `docs/create-response.txt` bằng kết quả mới nhất.
 
 Để kiểm tra tính bền vững của dữ liệu, dừng API bằng `Ctrl+C`, chạy lại với cùng chuỗi kết nối, sau đó gọi:
 
@@ -229,6 +239,6 @@ Lệnh `docker compose down -v` sẽ xóa volume và dữ liệu database.
 ## Lộ trình phát triển
 
 - **Tuần 1:** Order API, PostgreSQL và kiểm thử HTTP — đã triển khai.
-- **Tuần 2:** RabbitMQ và Kitchen Worker.
-- **Tuần 3:** Hủy đơn và phát sự kiện.
+- **Tuần 2:** RabbitMQ và Kitchen Worker xử lý đơn bất đồng bộ.
+- **Tuần 3:** Transactional Outbox, hủy đơn và phát sự kiện.
 - **Tuần 4:** SignalR và giao diện người dùng.
