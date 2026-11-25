@@ -119,7 +119,7 @@ public sealed class KitchenConsumer(IConfiguration config, IServiceScopeFactory 
             logger.LogWarning(exception, "Transient database failure for message {MessageId}; retrying after delay",
                 delivery.BasicProperties.MessageId);
             await Task.Delay(TimeSpan.FromSeconds(3), token);
-            await channel.BasicNackAsync(delivery.DeliveryTag, multiple: false, requeue: true, token);
+            await channel.BasicRejectAsync(delivery.DeliveryTag, requeue: true, token);
             return;
         }
         await channel.BasicAckAsync(delivery.DeliveryTag, multiple: false, token);
