@@ -6,8 +6,31 @@ services:
       POSTGRES_USER: kitchenflow
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your environment}
     ports:
-      - "127.0.0.1:5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: [CMD, pg_isready, -U, kitchenflow, -d, kitchenflow]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+  rabbitmq:
+    image: rabbitmq:4.2-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-kitchenflow}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-}
+    entrypoint: [/bin/sh, -ec, ': "$${RABBITMQ_DEFAULT_PASS:?Set RABBITMQ_PASSWORD}"; exec docker-entrypoint.sh rabbitmq-server']
+    ports:
+      - "127.0.0.1:${RABBITMQ_PORT:-5672}:5672"
+      - "127.0.0.1:${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, check_port_connectivity]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 volumes:
   postgres_data:
+  rabbitmq_data:
