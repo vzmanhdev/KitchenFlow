@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/KitchenFlow.Contracts/KitchenFlow.Contracts.csproj" />
+    <Project Path="src/KitchenFlow.Messaging/KitchenFlow.Messaging.csproj" />
     <Project Path="src/Order.Api/Order.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">

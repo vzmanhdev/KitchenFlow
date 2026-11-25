@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
+using KitchenFlow.Contracts;
 using Order.Api.Contracts;
 using Order.Api.Data;
 using Order.Api.Models;
+using Order.Api.Messaging;
 namespace Order.Api.Endpoints;
 
 public static class OrderEndpoints
@@ -20,7 +22,8 @@ public static class OrderEndpoints
         app.MapGet("/orders", async (OrderDbContext db) => Results.Ok((await Details(db)
             .OrderByDescending(x => x.CreatedAt).ThenByDescending(x => x.Id).ToListAsync()).Select(ToResponse)));
     }
-    private static async Task<IResult> CreateOrder(CreateOrderRequest request, OrderDbContext db)
+    private static async Task<IResult> CreateOrder(CreateOrderRequest request, OrderDbContext db,
+        OrderPublisher publisher, HttpContext context)
     {
         if (request.Items is null || request.Items.Count == 0)
             return Bad("empty_order", "At least one item is required.");
@@ -44,6 +47,8 @@ public static class OrderEndpoints
         // EF Core wraps this single save of the entire graph in a transaction.
         await db.SaveChangesAsync();
         await db.Entry(order).ReloadAsync();
+        await publisher.PublishAsync(new OrderCreatedMessage(Guid.NewGuid(), order.Id, order.CreatedAt,
+            context.TraceIdentifier));
         return Results.Created($"/orders/{order.Id}", ToResponse(order));
     }
     private static IResult Bad(string code, string message) => Results.BadRequest(new ErrorResponse(code, message));
